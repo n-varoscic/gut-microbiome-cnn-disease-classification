@@ -1,0 +1,24 @@
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+thesis_agp_new/
+
+# ── Jupyter ────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# ── Data files (too big to be put on git) ─────────────────────
+# Reproduce via EDA.ipynb and preprocessing.ipynb
+data/
