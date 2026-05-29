@@ -115,9 +115,3 @@ Check output:
 ```bash
 cat slurm-<JOB_ID>.out
 ```
-
----
-
-## 📝 License
-
-This project is licensed under the [MIT License](LICENSE).
