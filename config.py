@@ -50,13 +50,13 @@ META_DIM = 20  # number of encoded metadata dimensions
 # Encoded metadata feature names — must match column order in encoded_metadata.npz.
 # Derived from df_encoded_meta.columns in preprocessing.ipynb.
 META_FEATURE_NAMES = [
-    'age_corrected',                        # continuous, standardised
+    'age_corrected',                        # continuous (raw years; standardized in pipeline)
     'bmi_cat',                              # ordinal
     'alcohol_frequency',                    # ordinal
     'sleep_duration',                       # ordinal
     'exercise_frequency',                   # ordinal
     'smoking_frequency',                    # ordinal
-    'antibiotic_history',                   # binary
+    'antibiotic_history',                   # ordinal (0–4; ~92% are 0)
     'sex_female',                           # one-hot
     'sex_male',                             # one-hot
     'race_African American',                # one-hot
@@ -78,18 +78,41 @@ assert len(META_FEATURE_NAMES) == META_DIM, (
 # ── Feature importance ────────────────────────────────────────────────────────
 IMPORTANCE_N_REPEATS = 10  # shuffles per feature in permutation importance
 
+# Grouped feature map: original categorical variable → list of one-hot column names.
+# Used for grouped permutation importance — permuting correlated dummies together
+# avoids creating impossible combinations (e.g. sex_male=0 AND sex_female=0).
+META_FEATURE_GROUPS = {
+    'antibiotic_history':  ['antibiotic_history'],
+    'exercise_frequency':  ['exercise_frequency'],
+    'age_corrected':       ['age_corrected'],
+    'bmi_cat':             ['bmi_cat'],
+    'sleep_duration':      ['sleep_duration'],
+    'smoking_frequency':   ['smoking_frequency'],
+    'alcohol_frequency':   ['alcohol_frequency'],
+    'sex':                 ['sex_female', 'sex_male'],
+    'race':                ['race_African American', 'race_Asian or Pacific Islander',
+                            'race_Caucasian', 'race_Hispanic', 'race_Other'],
+    'geographic_location': ['geographic location_Australia', 'geographic location_Canada',
+                            'geographic location_Germany', 'geographic location_Other',
+                            'geographic location_USA', 'geographic location_United Kingdom'],
+}
+
 # ── Taxa representations ──────────────────────────────────────────────────────
-# Each entry: (name, taxa_npz_path, saved_model_path)
+# Each entry: (name, taxa_npz_path, meta_model_save_path)
+# The image-only model save path is derived by replacing '_meta.keras' with
+# '_io.keras' so the two models' saved files mirror each other:
+#   metadata    → best_cnn_{rep}_meta.keras
+#   image-only  → best_cnn_{rep}_io.keras
 REPRESENTATIONS = [
     ('binary',
      str(DATA_DIR / 'preprocessed_binary.npz'),
-     str(MODELS_DIR / 'best_cnn_binary.keras')),
+     str(MODELS_DIR / 'best_cnn_binary_meta.keras')),
     ('normalized',
      str(DATA_DIR / 'preprocessed_normalized.npz'),
-     str(MODELS_DIR / 'best_cnn_normalized.keras')),
+     str(MODELS_DIR / 'best_cnn_normalized_meta.keras')),
     ('log',
      str(DATA_DIR / 'preprocessed_log.npz'),
-     str(MODELS_DIR / 'best_cnn_log.keras')),
+     str(MODELS_DIR / 'best_cnn_log_meta.keras')),
 ]
 
 # ── Hyperparameter grid ───────────────────────────────────────────────────────

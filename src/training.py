@@ -3,6 +3,8 @@ Training and evaluation functions for the CNN models.
 
 Both training functions follow the same pattern:
   1. Fit StandardScaler on the training split only (prevents cross-fold leakage).
+     The metadata model additionally standardizes its metadata inputs the same
+     way (separate scaler, also fit on the training split only).
   2. Compute inverse-frequency class weights (IBD is ~23% of samples).
   3. Build model and fit with EarlyStopping + ReduceLROnPlateau.
   4. Sweep thresholds 0.20–0.80 to find the one maximising F-beta on the
@@ -141,6 +143,12 @@ def train_and_evaluate_meta(X_tr, M_tr, y_tr, X_val, M_val, y_val,
     X_tr_s  = scaler.fit_transform(X_tr.reshape(len(X_tr), -1)).reshape(X_tr.shape)
     X_val_s = scaler.transform(X_val.reshape(len(X_val), -1)).reshape(X_val.shape)
 
+    # Standardize metadata too — fit on THIS fold's training split only (no leakage).
+    # Puts ordinals, one-hots and the (already-standardized) age on a common scale.
+    meta_scaler = StandardScaler()
+    M_tr_s      = meta_scaler.fit_transform(M_tr)
+    M_val_s     = meta_scaler.transform(M_val)
+
     tf.random.set_seed(seed)
     np.random.seed(seed)
     model = build_metadata_model(img_shape, M_tr.shape[1],
@@ -149,8 +157,8 @@ def train_and_evaluate_meta(X_tr, M_tr, y_tr, X_val, M_val, y_val,
                                  dense_drop=params['dense_drop'])
 
     history = model.fit(
-        {'taxa_image': X_tr_s, 'metadata': M_tr}, y_tr,
-        validation_data=({'taxa_image': X_val_s, 'metadata': M_val}, y_val),
+        {'taxa_image': X_tr_s, 'metadata': M_tr_s}, y_tr,
+        validation_data=({'taxa_image': X_val_s, 'metadata': M_val_s}, y_val),
         epochs=EPOCHS,
         batch_size=params['batch_size'],
         class_weight=_class_weights(y_tr),
@@ -159,6 +167,6 @@ def train_and_evaluate_meta(X_tr, M_tr, y_tr, X_val, M_val, y_val,
     )
 
     val_probs = model.predict(
-        {'taxa_image': X_val_s, 'metadata': M_val}, verbose=0).ravel()
+        {'taxa_image': X_val_s, 'metadata': M_val_s}, verbose=0).ravel()
     threshold = _best_threshold(y_val, val_probs)
     return _metrics(y_val, val_probs, threshold, history), model, scaler, history

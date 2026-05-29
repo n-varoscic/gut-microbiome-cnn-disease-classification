@@ -22,3 +22,6 @@ thesis_agp_new/
 # ── Data files (too big to be put on git) ─────────────────────
 # Reproduce via EDA.ipynb and preprocessing.ipynb
 data/
+
+# ── Habrok job output files ────────────────────────────────────────────────────
+gut_cnn_*.out

@@ -267,9 +267,10 @@ def run_final_model_meta(X_train, M_train, y_train,
 
     Returns:
         test_metrics : dict
-        model        : trained Keras model  (needed for Phase 4)
-        scaler       : fitted StandardScaler (needed for Phase 4)
-        test_probs   : (N_test,) raw probabilities (needed for Phase 4)
+        model        : trained Keras model    (needed for Phase 4)
+        scaler       : fitted image StandardScaler    (needed for Phase 4)
+        meta_scaler  : fitted metadata StandardScaler (needed for Phase 4)
+        test_probs   : (N_test,) raw probabilities    (needed for Phase 4)
     """
     print(f"\n{'='*62}")
     print(f"  Phase 3 — Final model → test set  [{rep_name}  |  metadata]")
@@ -278,6 +279,12 @@ def run_final_model_meta(X_train, M_train, y_train,
     scaler   = StandardScaler()
     X_tr_s   = scaler.fit_transform(X_train.reshape(len(X_train), -1)).reshape(X_train.shape)
     X_test_s = scaler.transform(X_test.reshape(len(X_test), -1)).reshape(X_test.shape)
+
+    # Standardize metadata — fit on full training set only (test never seen).
+    # Must be returned so Phase 4 can scale M_test identically before attribution.
+    meta_scaler = StandardScaler()
+    M_train_s   = meta_scaler.fit_transform(M_train)
+    M_test_s    = meta_scaler.transform(M_test)
 
     n       = len(y_train)
     n_ibd   = int(y_train.sum())
@@ -304,10 +311,10 @@ def run_final_model_meta(X_train, M_train, y_train,
     ]
 
     model.fit(
-        {'taxa_image': X_tr_s[tr_idx], 'metadata': M_train[tr_idx]},
+        {'taxa_image': X_tr_s[tr_idx], 'metadata': M_train_s[tr_idx]},
         y_train[tr_idx],
         validation_data=(
-            {'taxa_image': X_tr_s[val_idx], 'metadata': M_train[val_idx]},
+            {'taxa_image': X_tr_s[val_idx], 'metadata': M_train_s[val_idx]},
             y_train[val_idx]),
         epochs=EPOCHS,
         batch_size=best_params['batch_size'],
@@ -317,7 +324,7 @@ def run_final_model_meta(X_train, M_train, y_train,
     )
 
     val_probs    = model.predict(
-        {'taxa_image': X_tr_s[val_idx], 'metadata': M_train[val_idx]},
+        {'taxa_image': X_tr_s[val_idx], 'metadata': M_train_s[val_idx]},
         verbose=0).ravel()
     best_thr, best_score = 0.5, 0.0
     for thr in np.arange(0.20, 0.81, 0.01):
@@ -327,7 +334,7 @@ def run_final_model_meta(X_train, M_train, y_train,
             best_score, best_thr = score, thr
 
     test_probs     = model.predict(
-        {'taxa_image': X_test_s, 'metadata': M_test}, verbose=0).ravel()
+        {'taxa_image': X_test_s, 'metadata': M_test_s}, verbose=0).ravel()
     preds          = (test_probs >= best_thr).astype(int)
     tn, fp, fn, tp = confusion_matrix(y_test, preds).ravel()
 
@@ -344,4 +351,4 @@ def run_final_model_meta(X_train, M_train, y_train,
     print(f"  Conf  TP={tp}  TN={tn}  FP={fp}  FN={fn}  (thr={best_thr:.2f})")
     model.save(model_save_path)
     print(f"  Saved -> {model_save_path}")
-    return test_metrics, model, scaler, test_probs
+    return test_metrics, model, scaler, meta_scaler, test_probs

@@ -4,12 +4,14 @@ Utility functions for data loading and result persistence.
 Functions
 ---------
 load_representation  — load a preprocessed taxa .npz and return train/test arrays
-save_rep_to_excel    — write per-representation result sheets to the Excel workbook
+save_rep_to_excel    — write all result sections for one representation into a single sheet
 """
 
 import os
 import numpy as np
 import pandas as pd
+from openpyxl import load_workbook, Workbook
+from openpyxl.styles import Font
 
 from config import RESULTS_XLSX
 
@@ -35,49 +37,91 @@ def load_representation(taxa_path):
 
 
 def save_rep_to_excel(rep_name, gs_df, cv_metrics, test_metrics,
-                      perm_df=None, grad_df=None, results_path=None):
-    """Write result sheets for one representation to the Excel workbook.
+                      perm_df=None, grad_df=None, grouped_perm_df=None,
+                      results_path=None):
+    """Write all result sections for one representation into a single sheet.
 
-    Appends to an existing file or creates a new one. Existing sheets with the
-    same name are replaced (safe to re-run after a crash).
+    Each section is preceded by a bold title row, then the DataFrame header
+    and data. Two blank rows separate consecutive sections.  One sheet per
+    representation keeps the workbook tidy (e.g. 'binary_io', 'binary_meta').
 
-    Sheets written:
-      gs_{rep_name}    — grid search results
-      cv_{rep_name}    — per-fold CV metrics (fold column prepended)
-      test_{rep_name}  — test set metrics
-      perm_{rep_name}  — permutation importance (if provided)
-      grad_{rep_name}  — gradient importance (if provided)
+    Sheet layout example (rep_name = 'binary_meta'):
+      Row  1 : ── GRID SEARCH ──                   (bold)
+      Row  2 : column headers
+      Rows 3–14 : grid-search rows
+      Rows 15–16 : blank
+      Row 17 : ── K-FOLD CV METRICS ──             (bold)
+      …
+      ── PERMUTATION IMPORTANCE ──
+      ── GRADIENT IMPORTANCE ──
+      ── GROUPED PERMUTATION IMPORTANCE ──
 
     Args:
-        rep_name     : str       — sheet name suffix (e.g. 'binary', 'log_io')
-        gs_df        : DataFrame — from run_grid_search
-        cv_metrics   : list[dict] — from run_kfold_cv
-        test_metrics : dict      — from run_final_model_*
-        perm_df      : DataFrame or None — from run_importance_analysis
-        grad_df      : DataFrame or None — from run_importance_analysis
-        results_path : str or None — override default RESULTS_XLSX
+        rep_name        : str        — sheet name (e.g. 'binary_io', 'normalized_meta')
+        gs_df           : DataFrame  — from run_grid_search
+        cv_metrics      : list[dict] — from run_kfold_cv
+        test_metrics    : dict       — from run_final_model_*
+        perm_df         : DataFrame or None — individual permutation importance
+        grad_df         : DataFrame or None — gradient importance
+        grouped_perm_df : DataFrame or None — grouped permutation importance
+        results_path    : str or None — override default RESULTS_XLSX
     """
-    path   = results_path or RESULTS_XLSX
+    path = results_path or RESULTS_XLSX
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    mode   = 'a' if os.path.exists(path) else 'w'
-    kwargs = {'if_sheet_exists': 'replace'} if mode == 'a' else {}
 
-    with pd.ExcelWriter(path, engine='openpyxl', mode=mode, **kwargs) as writer:
-        gs_df.to_excel(writer, sheet_name=f'gs_{rep_name}', index=False)
+    cv_df = pd.DataFrame(cv_metrics)
+    cv_df.insert(0, 'fold', range(1, len(cv_metrics) + 1))
+    test_df = pd.DataFrame([test_metrics])
 
-        cv_df = pd.DataFrame(cv_metrics)
-        cv_df.insert(0, 'fold', range(1, len(cv_metrics) + 1))
-        cv_df.to_excel(writer, sheet_name=f'cv_{rep_name}', index=False)
-
-        pd.DataFrame([test_metrics]).to_excel(
-            writer, sheet_name=f'test_{rep_name}', index=False)
-
-        if perm_df is not None:
-            perm_df.to_excel(writer, sheet_name=f'perm_{rep_name}', index=False)
-        if grad_df is not None:
-            grad_df.to_excel(writer, sheet_name=f'grad_{rep_name}', index=False)
-
-    sheets = 'gs, cv, test'
+    sections = [
+        ('GRID SEARCH',       gs_df),
+        ('K-FOLD CV METRICS', cv_df),
+        ('TEST SET METRICS',  test_df),
+    ]
     if perm_df is not None:
-        sheets += ', perm, grad'
-    print(f"  Saved -> {path}  ({sheets}  for {rep_name})")
+        sections.append(('PERMUTATION IMPORTANCE', perm_df))
+    if grad_df is not None:
+        sections.append(('GRADIENT IMPORTANCE', grad_df))
+    if grouped_perm_df is not None:
+        sections.append(('GROUPED PERMUTATION IMPORTANCE', grouped_perm_df))
+
+    # Open existing workbook or create a fresh one
+    if os.path.exists(path):
+        wb = load_workbook(path)
+    else:
+        wb = Workbook()
+        # Workbook() creates a default 'Sheet' — remove it
+        if 'Sheet' in wb.sheetnames:
+            del wb['Sheet']
+
+    # Drop any prior version of this rep's sheet so we start fresh
+    if rep_name in wb.sheetnames:
+        del wb[rep_name]
+    ws = wb.create_sheet(rep_name)
+
+    # Write each section: bold title row, then DataFrame (header + data), then 2 blanks
+    row = 1   # openpyxl is 1-indexed
+    for title, df in sections:
+        # Bold title row
+        ws.cell(row=row, column=1, value=f'── {title} ──').font = Font(bold=True)
+        row += 1
+        # Header row
+        for c, name in enumerate(df.columns, start=1):
+            ws.cell(row=row, column=c, value=name)
+        row += 1
+        # Data rows (convert numpy scalars to native Python so openpyxl is happy)
+        for _, data_row in df.iterrows():
+            for c, val in enumerate(data_row, start=1):
+                if hasattr(val, 'item'):
+                    val = val.item()
+                ws.cell(row=row, column=c, value=val)
+            row += 1
+        # Two blank rows between sections
+        row += 2
+
+    # openpyxl requires at least one sheet to save
+    if not wb.sheetnames:
+        wb.create_sheet('_placeholder')
+    wb.save(path)
+
+    print(f"  Saved -> {path}  (sheet: {rep_name})")
