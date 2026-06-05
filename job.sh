@@ -1,7 +1,6 @@
 #!/bin/bash
 # =============================================================================
 # SLURM job script — Habrok (University of Groningen)
-# Runs the full CNN pipeline (image-only + metadata, all 3 representations)
 #
 # Submit:  sbatch job.sh
 # Monitor: squeue -u $USER
@@ -68,7 +67,7 @@ echo "GPUs     : $CUDA_VISIBLE_DEVICES"
 echo "Started  : $(date)"
 echo "============================================"
 
-python3 run_pipeline.py
+python3 run_limited_metadata_pipeline.py
 
 echo "============================================"
 echo "Finished : $(date)"
